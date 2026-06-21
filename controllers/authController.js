@@ -1,3 +1,4 @@
+const { promisify } = require('util');
 const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
 const AppError = require('./../utils/appError');
@@ -14,7 +15,8 @@ exports.signup = async (req, res, next) => {
       name: req.body.name,
       email: req.body.email,
       password: req.body.password,
-      passwordConfirm: req.body.passwordConfirm
+      passwordConfirm: req.body.passwordConfirm,
+      passwordChangedAt: req.body.passwordChangedAt
     });
 
     const token = signToken(newUser._id);
@@ -48,6 +50,58 @@ exports.login = async (req, res, next) => {
       status: 'success',
       token
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+//To protect getAllTours route middleware function
+
+exports.protect = async (req, res, next) => {
+  try {
+    let token;
+    //1) getting token and check if token exist from authorization header
+    //console.log(req.headers.authorization);
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer')
+    ) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (!token) {
+      return next(
+        new AppError('You are not logged in. Please log in to get access', 401)
+      );
+    }
+    //2) validate the token from JWT algorithm
+    const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+
+    console.log('decoded...', decoded);
+
+    //3) check if user still exist after token was issued
+    const currentUser = await User.findById(decoded.id);
+    if (!currentUser) {
+      return next(
+        new AppError(
+          'The user belong to the token no longer exist issued!',
+          401
+        )
+      );
+    }
+    //4) check if user changed pwd after token was issued
+    const passwordChanged = currentUser.passwordChangedAfter(decoded.iat);
+    if (passwordChanged) {
+      return next(
+        new AppError(
+          'Password is changed by the user recently, Please login again',
+          401
+        )
+      );
+    }
+    // If everything works fine then grant access to getAllTours
+    req.user = currentUser;
+    next();
   } catch (err) {
     next(err);
   }
