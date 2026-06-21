@@ -77,8 +77,6 @@ exports.protect = async (req, res, next) => {
     //2) validate the token from JWT algorithm
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
-    console.log('decoded...', decoded);
-
     //3) check if user still exist after token was issued
     const currentUser = await User.findById(decoded.id);
     if (!currentUser) {
