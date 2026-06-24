@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Tour = require('./../models/tourModel');
 const APIFeatures = require('./../utils/apiFeatures');
+const AppError = require('./../utils/appError');
 
 //MIDDLEWARE to get top 5 cheap tours aliasing route
 exports.aliasTopFive = (req, res, next) => {
@@ -108,7 +110,6 @@ exports.deleteTour = async (req, res, next) => {
       message: 'Selected Tour is deleted'
     });
   } catch (err) {
-    console.log('error..', err);
     next(err);
   }
 };

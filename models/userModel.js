@@ -1,6 +1,8 @@
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const validator = require('validator');
+const AppError = require('../utils/appError');
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -15,6 +17,11 @@ const userSchema = new mongoose.Schema({
     validate: [validator.isEmail, 'Please enter a valid Email']
   },
   photo: String,
+  role: {
+    type: String,
+    enum: ['user', 'guide', 'lead-guide', 'admin'],
+    default: 'user'
+  },
   password: {
     type: String,
     required: [true, 'Please enter a password'],
@@ -32,18 +39,33 @@ const userSchema = new mongoose.Schema({
       message: 'Passwords do not match.'
     }
   },
-  passwordChangedAt: Date
+  passwordChangedAt: Date,
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+  active: {
+    type: Boolean,
+    default: true,
+    select: false
+  }
 });
 
 userSchema.pre('save', async function() {
-  // this works only when password is actually modiefied
-  // Asyns and await because it is blocking code and to make it asynchromous we use aysnc and await
-  if (!this.isModified) return;
+  if (!this.isModified('password')) return; // ✅ just return, no next()
 
-  //Hash the passowrd at the cost of 12 (CPU computation to make it strong pwd)
   this.password = await bcrypt.hash(this.password, 12);
-  //after encrypting delete the confirmPassword
   this.passwordConfirm = undefined;
+  // ✅ async function resolving = Mongoose continues automatically
+});
+
+userSchema.pre('save', async function() {
+  // ✅ This one is NOT async, so next() works fine here
+  if (!this.isModified('password') || this.isNew) return;
+
+  this.passwordChangedAt = Date.now() - 1000;
+});
+
+userSchema.pre(/^find/, function() {
+  this.where({ active: { $ne: false } });
 });
 
 userSchema.methods.correctPassword = async function(
@@ -56,9 +78,29 @@ userSchema.methods.correctPassword = async function(
 userSchema.methods.passwordChangedAfter = function(jwtTimeStamp) {
   if (this.passwordChangedAt) {
     console.log(this.passwordChangedAt, jwtTimeStamp);
-    // const passwordChangedAt = parseInt(this.passwordChangedAt.getTime() / 1000)
+    const changedPasswordTime = parseInt(
+      this.passwordChangedAt.getTime() / 1000,
+      10
+    );
+    // True means password is changed after token issued
+    return jwtTimeStamp < changedPasswordTime;
   }
+  // false means password is not changed
   return false;
+};
+
+userSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+
+  //encrypt the resetToken tp save in DB
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+
+  return resetToken;
 };
 const User = mongoose.model('User', userSchema);
 

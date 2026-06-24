@@ -1,5 +1,11 @@
 const express = require('express');
 const morgan = require('morgan'); // Third Party middleware
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+const hpp = require('hpp');
+
 const AppError = require('./utils/appError');
 const globalErrorHandler = require('./controllers/errorController');
 
@@ -8,21 +14,47 @@ const userRouter = require('./routes/userRouter');
 
 const app = express();
 
-//MIDDLEWARES
-// app.use((req, res, next) => {
-//   console.log('Hello from middleware..');
-//   next();
-// });
-
+app.use(helmet());
 // to get the time at which request is made
 app.use((req, res, next) => {
   req.requestTime = new Date().toISOString();
   next();
 });
 
-app.use(morgan('dev')); // Third party middleware to print the details about http request and response
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev')); // Third party middleware to print the details about http request and response
+}
 
-app.use(express.json()); // creating a middleware to get the request details, cuz express doesn't allow to have request body
+//Data Sanitization agains NoSql Query Injection (anyone can login given email as nosql query and knowing only password)
+app.use(mongoSanitize());
+
+//Data Sanitization against XSS attacks
+app.use(xss());
+
+// preventing parameter pollution [/api/v1/tours/sort = 'duration' & sort=''price] - gives error
+app.use(
+  hpp({
+    whitelist: [
+      'duration',
+      'ratingsQuantity',
+      'ratingsAverage',
+      'maxGroupSize',
+      'dififculty',
+      'price'
+    ] // whitelist all the fields which can be duplicated and get the result based on parameter selection
+  })
+);
+
+//Limit the requests from same IP
+const limiter = rateLimit({
+  max: 100,
+  windowMs: 60 * 60 * 1000,
+  message:
+    'Too many Requests from this IP, Please try again later after an hour'
+});
+app.use('/api', limiter);
+
+app.use(express.json({ limit: '10kb' })); // creating a middleware to get the request details, cuz express doesn't allow to have request body
 
 // app.get('/', (req, res) => {
 // //res.status(200).send('Hello from the server side!');
@@ -50,7 +82,7 @@ app.all('*', (req, res, next) => {
   next(
     new AppError(
       `Requested URL ${req.originalUrl} not found on this server`,
-      '404'
+      404
     )
   ); // when we pass err in next() function is any middleware then express understands is that next middleware to execute is
   //global error handling middleware and skips all the next middlewares in the stack

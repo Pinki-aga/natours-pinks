@@ -12,7 +12,7 @@ const {
   deleteTour,
   aliasTopFive
 } = tourController;
-const { protect } = authController;
+const { protect, restrictTo } = authController;
 
 //router.param('id', tourController.checkId);
 //Aliasing the Routes to get top 5 cheap tours
@@ -27,6 +27,6 @@ router
   .route('/:id')
   .patch(updateTour)
   .get(getTour)
-  .delete(deleteTour);
+  .delete(protect, restrictTo('admin', 'lead-guide'), deleteTour);
 
 module.exports = router;

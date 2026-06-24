@@ -80,6 +80,17 @@ const tourSchema = new mongoose.Schema(
     secretTour: {
       type: Boolean,
       default: false
+    },
+    startLocation: {
+      //GeoJSON for Geo Spatial location
+      type: {
+        type: String,
+        default: 'Point',
+        enum: ['Point']
+      },
+      coordinates: [Number],
+      address: String,
+      description: String
     }
   },
   {
@@ -122,7 +133,7 @@ tourSchema.pre(/^find/, function() {
   this.find({ secretTour: { $ne: true } });
 });
 
-tourSchema.post(/^find/, function(docs) {
+tourSchema.post(/^find/, function() {
   // to run for all the command starts with find like findById, findandupdate
   console.log(`Query took ${Date.now() - this.start} millisecons`);
   // console.log('docs..', docs);
